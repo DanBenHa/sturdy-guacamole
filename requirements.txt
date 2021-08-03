@@ -1,2 +1,4 @@
 sphinx
 MyST-Parser
+ablog
+pydata-sphinx-theme

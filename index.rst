@@ -8,14 +8,12 @@ Welcome to test website's documentation!
 
 .. toctree::
    myfile.md
+   
 
 foo
 
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+.. postlist:: 10
+   :date: %Y-%m-%d
+   :format: {date} - {title}
+   :list-style: none
+   :excerpts:
