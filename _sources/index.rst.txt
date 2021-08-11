@@ -8,6 +8,7 @@ Welcome to test website's documentation!
 
 .. toctree::
    myfile.md
+   ncpbare_to_ncdocker
    
 
 foo
