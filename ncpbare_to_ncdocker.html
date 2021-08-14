@@ -5,7 +5,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Some title &#8212; test website  documentation</title>
+    <title>Migrating from NextCloudPi bare metal installation to Nextcloud Docker &#8212; test website  documentation</title>
     
   <link href="_static/css/theme.css" rel="stylesheet" />
   <link href="_static/css/index.c5995385ac14fb8791e8eb36b4908be2.css" rel="stylesheet" />
@@ -98,7 +98,7 @@
 
 <li class="toctree-l1 current active nav-item">
  <a class="current reference internal nav-link" href="#">
-  Some title
+  Migrating from NextCloudPi bare metal installation to Nextcloud Docker
  </a>
 </li>
 
@@ -151,19 +151,55 @@
 <nav id="bd-toc-nav">
     <ul class="visible nav section-nav flex-column">
  <li class="toc-h2 nav-item toc-entry">
-  <a class="reference internal nav-link" href="#database-mariadb">
-   Database (MariaDB)
+  <a class="reference internal nav-link" href="#why-change">
+   Why change?
   </a>
  </li>
  <li class="toc-h2 nav-item toc-entry">
-  <a class="reference internal nav-link" href="#change-file-permissions-optional">
-   Change file permissions (optional)
+  <a class="reference internal nav-link" href="#the-basic-architecture">
+   The basic architecture
   </a>
  </li>
  <li class="toc-h2 nav-item toc-entry">
-  <a class="reference internal nav-link" href="#change-config-php">
-   Change config.php
+  <a class="reference internal nav-link" href="#migrations">
+   Migrations
   </a>
+  <ul class="nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#database-mariadb">
+     Database (MariaDB)
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#change-config-php">
+     Change config.php
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#alpine-image-change-file-permissions">
+     Alpine image: Change file permissions
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#alpine-image-nginx-www-data">
+     Alpine image: Nginx www-data
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#nginx-config">
+     Nginx config
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#docker-compose-yml">
+     <code class="code docutils literal notranslate">
+      <span class="pre">
+       docker-compose.yml
+      </span>
+     </code>
+    </a>
+   </li>
+  </ul>
  </li>
 </ul>
 
@@ -185,30 +221,77 @@
           <main class="col-12 col-md-9 col-xl-7 py-md-5 pl-md-5 pr-md-4 bd-content" role="main">
               
               <div>
-                 <div class="section" id="some-title">
-<h1>Some title<a class="headerlink" href="#some-title" title="Permalink to this headline">¶</a></h1>
+                 <div class="section" id="migrating-from-nextcloudpi-bare-metal-installation-to-nextcloud-docker">
+<h1>Migrating from NextCloudPi bare metal installation to Nextcloud Docker<a class="headerlink" href="#migrating-from-nextcloudpi-bare-metal-installation-to-nextcloud-docker" title="Permalink to this headline">¶</a></h1>
+<p>NextCloudPi is a great way to quickly get started with a private instance of Nextcloud that can be self-hosted on small computers like the Raspberry Pi.
+Setup is really easy because it includes sane default configurations.
+Also making backups of the instance (config and/or data) is easy with the inbuilt tools.
+In addition, if one uses the btrfs filesystem for the data folder, the bare metal installation offers convient ways to create snapshots.</p>
+<div class="section" id="why-change">
+<h2>Why change?<a class="headerlink" href="#why-change" title="Permalink to this headline">¶</a></h2>
+<p>While it was great in the beginning, I actually don’t use a lot of the features that NextCloudPi offers.
+Or I slightly changed scripts from it, so that I fear that a restore or upgrade might overwrite those modifications.
+For example, by default, NCP allows you to take btrfs snapshots of <cite>only</cite> the data directory, and they <cite>have</cite> to be stored in the parent folder.
+I now have both the data and database directory (what by default would be /var/www/html/nextcloud/data and /var/lib/mysql) in a single btrfs subvolume.
+This allows me to take atomic snapshots of both, which in the case of a restore would avoid mismatches.
+In addition my modification updates a <cite>latest</cite> symlink in the snapshots folder, so I can conveniently backup the latest snapshot via restic.
+Apart from the backup situation, I fear that the smaller number of developers for NCP might make it more likely that it is abandoned.
+At least the core Nextcloud team seems a lot bigger and better funded.</p>
+</div>
+<div class="section" id="the-basic-architecture">
+<h2>The basic architecture<a class="headerlink" href="#the-basic-architecture" title="Permalink to this headline">¶</a></h2>
+<p>The goal is to use the official docker image provided by the Nextcloud team.
+To stay similar to the NCP setup, I use the -fpm image which includes FastCGI.
+This won’t work out of the box, because it needs a few other services.
+In the end, there will be five docker containers:</p>
+<ol class="arabic simple">
+<li><p>nc-app: The main Nextcloud application</p></li>
+<li><p>nc-db: A MariaDB database that nc-app will access.</p></li>
+<li><p>nc-redis: The Redis server.</p></li>
+<li><p>nc-cron: Executes Nextcloud cron jobs.</p></li>
+<li><p>nc-web: A web server that serves the website.</p></li>
+</ol>
+<p>The best way to set up all these requirements is a docker-compose project (docker-compose.yml at the end).</p>
+<p>Before just running the docker-compose command, some migrations are needed.</p>
+</div>
+<div class="section" id="migrations">
+<h2>Migrations<a class="headerlink" href="#migrations" title="Permalink to this headline">¶</a></h2>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
-<p>Do this in a copy of your nextcloud-related files.
-I used btrfs snapshots</p>
+<p>It’s best to do a test-run on a copy of the nextcloud files in case something goes wrong.
+I used a btrfs snapshot of my datadir and databasedir and a copy of /var/www/html/nextcloud.</p>
 </div>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>bla
+<p>First, get the versions of MariaDB and the current Nextcloud instance.
+Having different versions for the bare metal installation and the docker setup just asks for trouble.</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>db -V
+mariadb  Ver <span class="m">15</span>.1 Distrib <span class="m">10</span>.3.29-MariaDB, <span class="k">for</span> debian-linux-gnu <span class="o">(</span>aarch64<span class="o">)</span> using readline <span class="m">5</span>.2
 </pre></div>
 </div>
+<p>This needs docker image mariadb:10.3.29.</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>$ sudo cat /var/www/html/nextcloud/version.php <span class="p">|</span>grep VersionString
+<span class="nv">$OC_VersionString</span> <span class="o">=</span> <span class="s1">&#39;20.0.11&#39;</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>And that’s Nextcloud 20.0.11.
+I’m using the fpm flavour and the lightweight alpine linux as base, so the image is nextcloud:20.0.11-fpm-alpine.</p>
+<p>I will work with three folders</p>
+<ol class="arabic simple">
+<li><p>ncdata: Contains all Nextcloud user data. By default at /var/www/html/nextcloud/data.</p></li>
+<li><p>ncdb: Contains MariaDB files. By default at /var/lib/mysql.</p></li>
+<li><p>php: Contains php configuration. By default at /var/www/html/nextcloud.</p></li>
+</ol>
 <div class="section" id="database-mariadb">
-<h2>Database (MariaDB)<a class="headerlink" href="#database-mariadb" title="Permalink to this headline">¶</a></h2>
+<h3>Database (MariaDB)<a class="headerlink" href="#database-mariadb" title="Permalink to this headline">¶</a></h3>
 <p>The database user <cite>ncadmin</cite> created by NextcloudPi can only be accessed from <cite>localhost</cite>, i.e. the machine that the database is running on.
 That makes sense for a bare-bones installation where the nextcloud app runs on the same computer, but not for a multi-container setup.
 In that case other containers look like other hosts from one container’s perspective.
-Therefore, access rights must be modified to allow access from the future <cite>nextcloud-app</cite> container.
-This can be done via a <cite>mariadb</cite> container.
-Make sure that the version matches the current database.</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>$ sudo cat db/mysql_upgrade_info
-<span class="m">10</span>.3.29-MariaDBd
-</pre></div>
-</div>
-<p>So I will fire up a <cite>mariadb:10.3.29</cite> container and mount the database folder into the container:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>$ sudo docker run -v /path/to/db:/var/lib/myqsl -d --name mariadb --rm mariadb:10.3.29 mysqld_safe --skip-grant-tables
+Therefore, access rights must be modified to allow access from the future <cite>nc-app</cite> container.
+That container will be part of the <cite>foonet</cite> docker network which has subnet 172.19.0.0/16.
+Since I don’t know what IP the <cite>nc-app</cite> container will have, I grant access for the whole subnet.
+Check a docker network’s subnet via <cite>docker network inspect foonet |grep Subnet</cite>.</p>
+<p>Changing the access host can be done via a single <cite>mariadb</cite> container.
+So I will fire up a <cite>mariadb:10.3.29</cite> container and mount the database folder into the container:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>$ sudo docker run -v ncdb:/var/lib/myqsl -d --name mariadb --rm mariadb:10.3.29 mysqld_safe --skip-grant-tables
 </pre></div>
 </div>
 <div class="admonition note">
@@ -221,7 +304,7 @@ Make sure that the version matches the current database.</p>
 However, MariaDB’s crash recovery just worked on my file snapshot.
 This probably works because my Nextcloud is used by only a few people and there aren’t many changes.</p>
 </div>
-<p>Log into the database</p>
+<p>Log into the database and change the access host for ncadmin.</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>$ sudo docker <span class="nb">exec</span> -it mariadb /bin/bash
 <span class="c1"># mysql</span>
 MariaDB<span class="o">[(</span>none<span class="o">)]</span> use nextcloud<span class="p">;</span>
@@ -232,8 +315,8 @@ MariaDB<span class="o">[</span>nextcloud<span class="o">]</span> <span class="k"
 <span class="p">|</span> localhost <span class="p">|</span> ncadmin <span class="p">|</span>
 <span class="p">|</span> localhost <span class="p">|</span> root    <span class="p">|</span>
 +-----------+---------+
-MariaDB <span class="o">[</span>nextcloud<span class="o">]</span>&gt; update mysql.user <span class="nb">set</span> <span class="nv">host</span><span class="o">=</span><span class="s1">&#39;nextcloud-app&#39;</span> where <span class="nv">user</span><span class="o">=</span><span class="s1">&#39;ncadmin&#39;</span><span class="p">;</span>
-MariaDB <span class="o">[</span>nextcloud<span class="o">]</span>&gt; update mysql.db <span class="nb">set</span> <span class="nv">host</span><span class="o">=</span><span class="s1">&#39;nextcloud-app&#39;</span> where <span class="nv">user</span><span class="o">=</span><span class="s1">&#39;ncadmin&#39;</span><span class="p">;</span>
+MariaDB <span class="o">[</span>nextcloud<span class="o">]</span>&gt; update mysql.user <span class="nb">set</span> <span class="nv">host</span><span class="o">=</span><span class="s1">&#39;172.19.0.0/255.255.0.0&#39;</span> where <span class="nv">user</span><span class="o">=</span><span class="s1">&#39;ncadmin&#39;</span><span class="p">;</span>
+MariaDB <span class="o">[</span>nextcloud<span class="o">]</span>&gt; update mysql.db <span class="nb">set</span> <span class="nv">host</span><span class="o">=</span><span class="s1">&#39;172.19.0.0/255.255.0.0&#39;</span> where <span class="nv">user</span><span class="o">=</span><span class="s1">&#39;ncadmin&#39;</span><span class="p">;</span>
 MariaDB <span class="o">[</span>nextcloud<span class="o">]</span>&gt; flush privileges<span class="p">;</span>
 MariaDB <span class="o">[</span>nextcloud<span class="o">]</span>&gt; quit<span class="p">;</span>
 <span class="c1"># exit</span>
@@ -241,48 +324,272 @@ $ sudo docker stop mariadb
 </pre></div>
 </div>
 </div>
-<div class="section" id="change-file-permissions-optional">
-<h2>Change file permissions (optional)<a class="headerlink" href="#change-file-permissions-optional" title="Permalink to this headline">¶</a></h2>
-<p>User <cite>www-data</cite> runs both the Nextcloud app and the fastcgi-php thingy.
-On armbian <cite>www-data</cite> is user 33.
-Under alpine images user 33, however, is <cite>xfs</cite>, and <cite>www-data</cite> is 82.
-Therefore, if one wants to use an alpine-based image, everything in <cite>/var/www/html</cite> needs to be <cite>chown</cite>’d to <cite>82</cite>.
-If the datadir for nextcloud was moved, it doesn’t reside in <cite>/var/www/html/data</cite> anymore.</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>sudo chown -R <span class="m">82</span>:root <span class="o">{</span>php,data<span class="o">}</span>
-</pre></div>
-</div>
-</div>
 <div class="section" id="change-config-php">
-<h2>Change config.php<a class="headerlink" href="#change-config-php" title="Permalink to this headline">¶</a></h2>
+<h3>Change config.php<a class="headerlink" href="#change-config-php" title="Permalink to this headline">¶</a></h3>
 <p>In order to have the nextcloud app find everything, some references need to be adapted in <cite>php/config/config.php</cite>.</p>
 <table class="table" id="id1">
 <caption><span class="caption-text">Change these</span><a class="headerlink" href="#id1" title="Permalink to this table">¶</a></caption>
 <colgroup>
-<col style="width: 33%" />
-<col style="width: 33%" />
-<col style="width: 33%" />
+<col style="width: 50%" />
+<col style="width: 50%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>key</p></th>
 <th class="head"><p>change to</p></th>
-<th class="head"><p>required</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>trusted_domains</p></td>
-<td><p>(add a test domain)</p></td>
-<td><p>no</p></td>
-</tr>
-<tr class="row-odd"><td><p>data directory</p></td>
+<tr class="row-even"><td><p><code class="code docutils literal notranslate"><span class="pre">datadirectory</span></code></p></td>
 <td><p><code class="code docutils literal notranslate"><span class="pre">/var/www/html/data</span></code></p></td>
-<td><p>yes</p></td>
 </tr>
-<tr class="row-even"><td><p>dbhost</p></td>
-<td><p>nextcloud-db:3306</p></td>
-<td><p>yes</p></td>
+<tr class="row-odd"><td><p><code class="code docutils literal notranslate"><span class="pre">dbhost</span></code></p></td>
+<td><p><code class="code docutils literal notranslate"><span class="pre">nextcloud-db:3306</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="code docutils literal notranslate"><span class="pre">redis</span></code> array: <code class="code docutils literal notranslate"><span class="pre">host</span></code></p></td>
+<td><p><code class="code docutils literal notranslate"><span class="pre">nextcloud-redis</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="code docutils literal notranslate"><span class="pre">redis</span></code> array: <code class="code docutils literal notranslate"><span class="pre">port</span></code></p></td>
+<td><p><code class="code docutils literal notranslate"><span class="pre">6379</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="code docutils literal notranslate"><span class="pre">tempdirectory</span></code></p></td>
+<td><p><code class="code docutils literal notranslate"><span class="pre">/var/www/html/data/tmp</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="code docutils literal notranslate"><span class="pre">logfile</span></code></p></td>
+<td><p><code class="code docutils literal notranslate"><span class="pre">/var/www/html/data/nextcloud.log</span></code></p></td>
 </tr>
 </tbody>
 </table>
+<p>It is also advisable to change the redis password to something that doesn’t contain special characters.
+Special characters are somehow jumbled up and then the password of redis and the one in docker-compose don’t match.
+I think the password doesn’t even need to be very secure if the container doesn’t expose its port to outside of the docker network.
+It’s a good idea to temporarily add a test domain under <cite>trusted_domains</cite>.</p>
+</div>
+<div class="section" id="alpine-image-change-file-permissions">
+<h3>Alpine image: Change file permissions<a class="headerlink" href="#alpine-image-change-file-permissions" title="Permalink to this headline">¶</a></h3>
+<p>User <cite>www-data</cite> runs both the Nextcloud app and fpm.
+On armbian <cite>www-data</cite> is user 33.
+Under alpine images user 33, however, is <cite>xfs</cite>, and <cite>www-data</cite> is 82.
+Therefore, if one wants to use an alpine-based image, everything in <cite>/var/www/html</cite> needs to be <cite>chown</cite>’d to <cite>82</cite>.
+If the datadir for nextcloud was moved, it doesn’t reside in <cite>/var/www/html/data</cite> anymore.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This also applies to the data directory which will be mounted at /var/www/html/data</p>
+</div>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>sudo chown -R <span class="m">82</span>:root <span class="o">{</span>php,ncdata<span class="o">}</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="alpine-image-nginx-www-data">
+<h3>Alpine image: Nginx www-data<a class="headerlink" href="#alpine-image-nginx-www-data" title="Permalink to this headline">¶</a></h3>
+<p>The nginx webserver needs to run as user <cite>www-data</cite> to be able to access the php files.
+But under nginx:alpine that user doesn’t exist.
+In current images you can’t add the user because you get an error that it exists (but it doesn’t).
+Removing and adding also doesn’t work.</p>
+<p>The last image that <cite>does</cite> allow one to add the user is nginx:10.15.12-alpine.
+For that, the image has to be slightly modified via a Dockerfile, that I put under the docker-compose.yml’s subdirectory web:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="l l-Scalar l-Scalar-Plain">FROM nginx:1.15.12-alpine</span>
+
+<span class="l l-Scalar l-Scalar-Plain">RUN set -x \</span>
+        <span class="l l-Scalar l-Scalar-Plain">&amp;&amp; addgroup -g 82 -S www-data \</span>
+        <span class="l l-Scalar l-Scalar-Plain">&amp;&amp; adduser -u 82 -D -S -G www-data www-data</span>
+<span class="l l-Scalar l-Scalar-Plain"># 82 is the standard uid/gid for &quot;www-data&quot; in Alpine</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="nginx-config">
+<h3>Nginx config<a class="headerlink" href="#nginx-config" title="Permalink to this headline">¶</a></h3>
+<p>Put this config under web/nginx.conf (mainly copied from the nextcloud docker repo):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>user www-data;
+worker_processes auto;
+
+error_log  /var/log/nginx/error.log error;
+pid        /var/run/nginx.pid;
+
+
+events {
+    worker_connections  1024;
+}
+
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  &#39;$remote_addr - $remote_user [$time_local] &quot;$request&quot; &#39;
+                      &#39;$status $body_bytes_sent &quot;$http_referer&quot; &#39;
+                      &#39;&quot;$http_user_agent&quot; &quot;$http_x_forwarded_for&quot;&#39;;
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    #tcp_nopush     on;
+
+    keepalive_timeout  65;
+
+    #gzip  on;
+
+    upstream php-handler {
+        server nextcloud-app:9000;
+    }
+
+    server {
+        listen 80;
+
+        # set max upload size
+        client_max_body_size 512M;
+        fastcgi_buffers 64 4K;
+
+        # Enable gzip but do not remove ETag headers
+        gzip on;
+        gzip_vary on;
+        gzip_comp_level 4;
+        gzip_min_length 256;
+        gzip_proxied expired no-cache no-store private no_last_modified no_etag auth;
+        gzip_types application/atom+xml application/javascript application/json application/ld+json application/manifest+json application/rss+xml application/vnd.geo+json application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/bmp image/svg+xml image/x-icon text/cache-manifest text/css text/plain text/vcard text/vnd.rim.location.xloc text/vtt text/x-component text/x-cross-domain-policy;
+
+        # HTTP response headers borrowed from Nextcloud `.htaccess`
+        add_header Referrer-Policy                      &quot;no-referrer&quot;   always;
+        add_header X-Content-Type-Options               &quot;nosniff&quot;       always;
+        add_header X-Download-Options                   &quot;noopen&quot;        always;
+        add_header X-Frame-Options                      &quot;SAMEORIGIN&quot;    always;
+        add_header X-Permitted-Cross-Domain-Policies    &quot;none&quot;          always;
+        add_header X-Robots-Tag                         &quot;none&quot;          always;
+        add_header X-XSS-Protection                     &quot;1; mode=block&quot; always;
+
+        # Remove X-Powered-By, which is an information leak
+        fastcgi_hide_header X-Powered-By;
+
+        # Path to the root of your installation
+        root /var/www/html;
+
+        # Specify how to handle directories -- specifying `/index.php$request_uri`
+        # here as the fallback means that Nginx always exhibits the desired behaviour
+        # when a client requests a path that corresponds to a directory that exists
+        # on the server. In particular, if that directory contains an index.php file,
+        # that file is correctly served; if it doesn&#39;t, then the request is passed to
+        # the front-end controller. This consistent behaviour means that we don&#39;t need
+        # to specify custom rules for certain paths (e.g. images and other assets,
+        # `/updater`, `/ocm-provider`, `/ocs-provider`), and thus
+        # `try_files $uri $uri/ /index.php$request_uri`
+        # always provides the desired behaviour.
+        index index.php index.html /index.php$request_uri;
+
+        # Ensure this block, which passes PHP files to the PHP process, is above the blocks
+        # which handle static assets (as seen below). If this block is not declared first,
+        # then Nginx will encounter an infinite rewriting loop when it prepends `/index.php`
+        # to the URI, resulting in a HTTP 500 error response.
+        location ~ \.php(?:$|/) {
+            fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+            set $path_info $fastcgi_path_info;
+
+            try_files $fastcgi_script_name =404;
+
+            include fastcgi_params;
+            # fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            fastcgi_param SCRIPT_FILENAME /var/www/html/$fastcgi_script_name;
+            fastcgi_param PATH_INFO $path_info;
+            fastcgi_param HTTPS on;
+
+            fastcgi_param modHeadersAvailable true;         # Avoid sending the security headers twice
+            fastcgi_param front_controller_active true;     # Enable pretty urls
+            fastcgi_pass php-handler;
+
+            fastcgi_intercept_errors on;
+            fastcgi_request_buffering off;
+        }
+
+        location ~ \.(?:css|js|svg|gif)$ {
+            try_files $uri /index.php$request_uri;
+            expires 6M;         # Cache-Control policy borrowed from `.htaccess`
+            access_log off;     # Optional: Don&#39;t log access to assets
+        }
+
+        location ~ \.woff2?$ {
+            try_files $uri /index.php$request_uri;
+            expires 7d;         # Cache-Control policy borrowed from `.htaccess`
+            access_log off;     # Optional: Don&#39;t log access to assets
+        }
+
+        # Rule borrowed from `.htaccess`
+        location /remote {
+            return 301 /remote.php$request_uri;
+        }
+
+        location / {
+            try_files $uri $uri/ /index.php$request_uri;
+        }
+    }
+}
+</pre></div>
+</div>
+</div>
+<div class="section" id="docker-compose-yml">
+<h3><code class="code docutils literal notranslate"><span class="pre">docker-compose.yml</span></code><a class="headerlink" href="#docker-compose-yml" title="Permalink to this headline">¶</a></h3>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nn">---</span>
+<span class="nt">version</span><span class="p">:</span> <span class="s">&quot;3.3&quot;</span>
+<span class="nt">services</span><span class="p">:</span>
+  <span class="nt">nc-db</span><span class="p">:</span>
+    <span class="nt">image</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">mariadb:10.3.29</span>
+    <span class="nt">container_name</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">nc-db</span>
+    <span class="nt">command</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">--transaction-isolation=READ-COMMITTED --log-bin=ROW</span>
+    <span class="nt">restart</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+    <span class="nt">volumes</span><span class="p">:</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">ncdb:/var/lib/mysql</span>
+
+  <span class="nt">nc-redis</span><span class="p">:</span>
+    <span class="nt">image</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">redis:alpine</span>
+    <span class="nt">container_name</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">nc-redis</span>
+    <span class="nt">hostname</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">nc-redis</span>
+    <span class="nt">restart</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+    <span class="nt">command</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">redis-server --requirepass asd</span> <span class="c1"># use some password</span>
+
+  <span class="nt">nc-app</span><span class="p">:</span>
+    <span class="nt">image</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">nextcloud:20.0.11-fpm-alpine</span>
+    <span class="nt">container_name</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">nc-app</span>
+    <span class="nt">restart</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+    <span class="nt">depends_on</span><span class="p">:</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">nc-db</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">nc-redis</span>
+    <span class="nt">environment</span><span class="p">:</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">REDIS_HOST=nc-redis</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">REDIS_HOST_PASSWORD=asd</span> <span class="c1"># redis password given above</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">MYSQL_PASSWORD=xyz</span> <span class="c1"># password for user ncadmin</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">MYSQL_DATABASE=nextcloud</span> <span class="c1"># database name</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">MYSQL_USER=ncadmin</span> <span class="c1">#SQL user name</span>
+    <span class="nt">volumes</span><span class="p">:</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">ncdata:/var/www/html/data</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">php:/var/www/html</span>
+
+  <span class="nt">nc-web</span><span class="p">:</span>
+    <span class="nt">build</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">./web</span>
+    <span class="nt">container_name</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">nc-web</span>
+    <span class="nt">restart</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">always</span>
+    <span class="nt">ports</span><span class="p">:</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">8080:80</span>
+    <span class="nt">links</span><span class="p">:</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">nc-app</span>
+    <span class="nt">volumes</span><span class="p">:</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">ncdata:/var/www/html/data</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">php:/var/www/html</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">web/nginx.conf:/etc/nginx/nginx.conf:ro</span>
+
+  <span class="nt">nc-cron</span><span class="p">:</span>
+    <span class="nt">image</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">nextcloud:20.0.11-fpm-alpine</span>
+    <span class="nt">container_name</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">nc-cron</span>
+    <span class="nt">restart</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">always</span>
+    <span class="nt">volumes</span><span class="p">:</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">ncdata:/var/www/html/data</span>
+      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">php:/var/www/html</span>
+    <span class="nt">entrypoint</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">/cron.sh</span>
+
+<span class="nt">networks</span><span class="p">:</span>
+  <span class="nt">default</span><span class="p">:</span>
+    <span class="nt">external</span><span class="p">:</span>
+      <span class="nt">name</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">foonet</span>
+</pre></div>
+</div>
+<p>I’m using an external network called foonet that includes my reverse proxy which handles SSL and redirects.</p>
+</div>
 </div>
 </div>
 
