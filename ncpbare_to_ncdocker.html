@@ -243,14 +243,15 @@ At least the core Nextcloud team seems a lot bigger and better funded.</p>
 <p>The goal is to use the official docker image provided by the Nextcloud team.
 To stay similar to the NCP setup, I use the -fpm image which includes FastCGI.
 This won’t work out of the box, because it needs a few other services.
-In the end, there will be five docker containers:</p>
+In the end, there will be four docker containers:</p>
 <ol class="arabic simple">
 <li><p>nc-app: The main Nextcloud application</p></li>
 <li><p>nc-db: A MariaDB database that nc-app will access.</p></li>
-<li><p>nc-redis: The Redis server.</p></li>
-<li><p>nc-cron: Executes Nextcloud cron jobs.</p></li>
-<li><p>nc-web: A web server that serves the website.</p></li>
 </ol>
+<p>3. nc-redis: The Redis server.
+5. nc-web: A web server that serves the website.</p>
+<p>Cron jobs will be executed by the host via <cite>docker exec</cite>, since cron in docker containers seems to be unreliable (
+<a class="reference external" href="https://www.projekt-rootserver.de/cron-events-in-docker-containern-zum-laufen-bringen/2019/09/">https://www.projekt-rootserver.de/cron-events-in-docker-containern-zum-laufen-bringen/2019/09/</a>)</p>
 <p>The best way to set up all these requirements is a docker-compose project (docker-compose.yml at the end).</p>
 <p>Before just running the docker-compose command, some migrations are needed.</p>
 </div>
@@ -343,10 +344,10 @@ $ sudo docker stop mariadb
 <td><p><code class="code docutils literal notranslate"><span class="pre">/var/www/html/data</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="code docutils literal notranslate"><span class="pre">dbhost</span></code></p></td>
-<td><p><code class="code docutils literal notranslate"><span class="pre">nextcloud-db:3306</span></code></p></td>
+<td><p><code class="code docutils literal notranslate"><span class="pre">nc-db:3306</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="code docutils literal notranslate"><span class="pre">redis</span></code> array: <code class="code docutils literal notranslate"><span class="pre">host</span></code></p></td>
-<td><p><code class="code docutils literal notranslate"><span class="pre">nextcloud-redis</span></code></p></td>
+<td><p><code class="code docutils literal notranslate"><span class="pre">nc-redis</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="code docutils literal notranslate"><span class="pre">redis</span></code> array: <code class="code docutils literal notranslate"><span class="pre">port</span></code></p></td>
 <td><p><code class="code docutils literal notranslate"><span class="pre">6379</span></code></p></td>
@@ -429,7 +430,7 @@ http {
     #gzip  on;
 
     upstream php-handler {
-        server nextcloud-app:9000;
+        server nc-app:9000;
     }
 
     server {
@@ -550,12 +551,6 @@ http {
     <span class="nt">depends_on</span><span class="p">:</span>
       <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">nc-db</span>
       <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">nc-redis</span>
-    <span class="nt">environment</span><span class="p">:</span>
-      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">REDIS_HOST=nc-redis</span>
-      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">REDIS_HOST_PASSWORD=asd</span> <span class="c1"># redis password given above</span>
-      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">MYSQL_PASSWORD=xyz</span> <span class="c1"># password for user ncadmin</span>
-      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">MYSQL_DATABASE=nextcloud</span> <span class="c1"># database name</span>
-      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">MYSQL_USER=ncadmin</span> <span class="c1">#SQL user name</span>
     <span class="nt">volumes</span><span class="p">:</span>
       <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">ncdata:/var/www/html/data</span>
       <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">php:/var/www/html</span>
@@ -572,15 +567,6 @@ http {
       <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">ncdata:/var/www/html/data</span>
       <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">php:/var/www/html</span>
       <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">web/nginx.conf:/etc/nginx/nginx.conf:ro</span>
-
-  <span class="nt">nc-cron</span><span class="p">:</span>
-    <span class="nt">image</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">nextcloud:20.0.11-fpm-alpine</span>
-    <span class="nt">container_name</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">nc-cron</span>
-    <span class="nt">restart</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">always</span>
-    <span class="nt">volumes</span><span class="p">:</span>
-      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">ncdata:/var/www/html/data</span>
-      <span class="p p-Indicator">-</span> <span class="l l-Scalar l-Scalar-Plain">php:/var/www/html</span>
-    <span class="nt">entrypoint</span><span class="p">:</span> <span class="l l-Scalar l-Scalar-Plain">/cron.sh</span>
 
 <span class="nt">networks</span><span class="p">:</span>
   <span class="nt">default</span><span class="p">:</span>

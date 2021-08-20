@@ -27,13 +27,15 @@ The basic architecture
 The goal is to use the official docker image provided by the Nextcloud team.
 To stay similar to the NCP setup, I use the -fpm image which includes FastCGI.
 This won't work out of the box, because it needs a few other services.
-In the end, there will be five docker containers:
+In the end, there will be four docker containers:
 
 1. nc-app: The main Nextcloud application
 2. nc-db: A MariaDB database that nc-app will access.
 3. nc-redis: The Redis server.
-4. nc-cron: Executes Nextcloud cron jobs.
 5. nc-web: A web server that serves the website.
+
+Cron jobs will be executed by the host via `docker exec`, since cron in docker containers seems to be unreliable (
+https://www.projekt-rootserver.de/cron-events-in-docker-containern-zum-laufen-bringen/2019/09/)
 
 The best way to set up all these requirements is a docker-compose project (docker-compose.yml at the end).
 
@@ -137,9 +139,9 @@ In order to have the nextcloud app find everything, some references need to be a
     * - :code:`datadirectory`
       - :code:`/var/www/html/data`
     * - :code:`dbhost`
-      - :code:`nextcloud-db:3306`
+      - :code:`nc-db:3306`
     * - :code:`redis` array: :code:`host`
-      - :code:`nextcloud-redis`
+      - :code:`nc-redis`
     * - :code:`redis` array: :code:`port`
       - :code:`6379`
     * - :code:`tempdirectory`
@@ -226,7 +228,7 @@ Put this config under web/nginx.conf (mainly copied from the nextcloud docker re
         #gzip  on;
 
         upstream php-handler {
-            server nextcloud-app:9000;
+            server nc-app:9000;
         }
 
         server {
@@ -349,12 +351,6 @@ Put this config under web/nginx.conf (mainly copied from the nextcloud docker re
         depends_on:
           - nc-db
           - nc-redis
-        environment:
-          - REDIS_HOST=nc-redis
-          - REDIS_HOST_PASSWORD=asd # redis password given above
-          - MYSQL_PASSWORD=xyz # password for user ncadmin
-          - MYSQL_DATABASE=nextcloud # database name
-          - MYSQL_USER=ncadmin #SQL user name
         volumes:
           - ncdata:/var/www/html/data
           - php:/var/www/html
@@ -372,15 +368,6 @@ Put this config under web/nginx.conf (mainly copied from the nextcloud docker re
           - php:/var/www/html
           - web/nginx.conf:/etc/nginx/nginx.conf:ro
      
-      nc-cron:
-        image: nextcloud:20.0.11-fpm-alpine
-        container_name: nc-cron
-        restart: always
-        volumes:
-          - ncdata:/var/www/html/data
-          - php:/var/www/html
-        entrypoint: /cron.sh
-
     networks:
       default:
         external:
